@@ -103,31 +103,37 @@ def main():
                         labels_pl: cur_batch_label,
                         is_training_pl: is_training}
             pred_val = sess.run(pred, feed_dict=feed_dict)
-            pred_class = np.argmax(pred_val, 1)[0]
+            pred_class = np.argmax(pred_val, 1)[0]      
 
-            
+            pcl = cur_batch_data[0,:]
+            plot_3d(pcl)
+
 
             # # Construct the saliency object. This doesn't yet compute the saliency mask, it just sets up the necessary ops.
-            gradient_saliency = saliency.GradientSaliency(graph, sess, y, pointclouds_pl)
+            # gradient_saliency = saliency.GradientSaliency(graph, sess, y, pointclouds_pl)
+            # feed_dict = {neuron_selector: pred_class, is_training_pl: is_training}
 
-            # # Compute the vanilla mask and the smoothed mask.
-            pcl = cur_batch_data[0,:]
+            # # # Compute the vanilla mask and the smoothed mask.
+            # vanilla_gradients_3d = gradient_saliency.GetMask(pcl, 
+            # feed_dict=feed_dict )
+            # VisualisePcdGrad(pcl, vanilla_gradients_3d)
 
-            # g = tf.gradients(y, pointclouds_pl)
-            # mask = sess.run(g, feed_dict={neuron_selector:pred_class, pointclouds_pl:cur_batch_data, is_training_pl:is_training})
+            # smoothgrad_mask_3d = gradient_saliency.GetSmoothedMask(pcl, feed_dict=feed_dict)
+            # VisualisePcdGrad(pcl, smoothgrad_mask_3d)
 
-            # plot_3d(pcl)
 
+            ##guided backprop
+
+            guided_backprop = saliency.GuidedBackprop(graph, sess, y, pointclouds_pl)
             feed_dict = {neuron_selector: pred_class, is_training_pl: is_training}
-            vanilla_gradients_3d = gradient_saliency.GetMask(pcl, 
+
+            vanilla_gradients_3d = guided_backprop.GetMask(pcl, 
             feed_dict=feed_dict )
             VisualisePcdGrad(pcl, vanilla_gradients_3d)
 
-            smoothgrad_mask_3d = gradient_saliency.GetSmoothedMask(pcl, feed_dict=feed_dict)
-            VisualisePcdGrad(pcl, smoothgrad_mask_3d)
+            # smoothgrad_mask_3d = guided_backprop.GetSmoothedMask(pcl, feed_dict=feed_dict)
+            # VisualisePcdGrad(pcl, smoothgrad_mask_3d)
 
-
-        #     print(pred_class, cur_batch_label)
 
 
 

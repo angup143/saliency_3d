@@ -7,6 +7,9 @@ import os
 import sys
 import importlib
 from mayavi import mlab
+import matplotlib.pyplot as plt
+from docx import Document
+from io import StringIO, BytesIO
 
 
 cwd = os.getcwd()
@@ -44,7 +47,7 @@ def test_data_loading():
         mlab.points3d((batch_data[0,:,0]),(batch_data[0,:,1]),(batch_data[0,:,2]))
         mlab.show()
 
-def VisualisePcdGrad(pcd, grad, percentile=99): #assumes both are 1024x3
+def VisualisePcdGrad(pcd, grad, percentile=99, show=True): #assumes both are 1024x3
     grad_val = np.sum(np.abs(grad), axis=1)
     vmax = np.percentile(grad_val, percentile)
     vmin = np.min(grad_val)
@@ -54,22 +57,48 @@ def VisualisePcdGrad(pcd, grad, percentile=99): #assumes both are 1024x3
     pc_grad = np.concatenate((pcd,grad_val),axis=1)
 
     mlab.points3d(pc_grad[:,0],pc_grad[:,1],pc_grad[:,2],pc_grad[:,3] )
-    mlab.show()
-    print(np.shape(pc_grad))
-    return pc_grad
+    if show:
+        mlab.show()
+    # else:
+    img = mlab.screenshot()
+    mlab.close()
+        # print(np.shape(pc_grad))
+    return pc_grad, img
 
-def plot_3d(points): # assumes points=x1024x3
+def plot_3d(points, show=True): # assumes points=x1024x3
     if points.ndim==3:
         points = points[0,:]
     
     mlab.points3d((points[:,0]),(points[:,1]),(points[:,2]))
-    mlab.show()
+    if show:
+        mlab.show()
+    # else:
+    img = mlab.screenshot()
+    mlab.close()
+    return img
+
+
+def rotate_point_cloud(pcd, angle):
+    angle_rad = np.deg2rad(angle)
+    cosval = np.cos(angle_rad)
+    sinval = np.sin(angle_rad)
+    rotation_matrix = np.array([[cosval, sinval, 0],
+                                    [-sinval, cosval, 0],
+                                    [0, 0, 1]])
+    rotated_pcd = np.dot(pcd, rotation_matrix)
+    return rotated_pcd
+
+
 
 def main():
 
     ckpt_file = '/home/ananya/Documents/titan/code/pointnet2/log/model.ckpt'
     is_training = False
     graph = tf.Graph()
+    output_filename = '/home/ananya/Desktop/pointnet_fetures.docx'
+    document = Document()
+    rotation = [20,40,60,80,100,120,140,160,180]
+
     with graph.as_default():
         pointclouds_pl, labels_pl = MODEL.placeholder_inputs(BATCH_SIZE, NUM_POINT)
         is_training_pl = tf.placeholder(tf.bool, shape=())
@@ -99,40 +128,62 @@ def main():
    
         while TEST_DATASET.has_next_batch():
             cur_batch_data, cur_batch_label = TEST_DATASET.next_batch(augment=False)
-            feed_dict = {pointclouds_pl: cur_batch_data,
-                        labels_pl: cur_batch_label,
-                        is_training_pl: is_training}
-            pred_val = sess.run(pred, feed_dict=feed_dict)
-            pred_class = np.argmax(pred_val, 1)[0]      
+            for rot in rotation:
+                cur_batch_data[0,:] = rotate_point_cloud(cur_batch_data[0,:], rot)
 
-            pcl = cur_batch_data[0,:]
-            plot_3d(pcl)
+                feed_dict = {pointclouds_pl: cur_batch_data,
+                            labels_pl: cur_batch_label,
+                            is_training_pl: is_training}
+                pred_val = sess.run(pred, feed_dict=feed_dict)
+                pred_class = np.argmax(pred_val, 1)[0]      
 
-
-            # # Construct the saliency object. This doesn't yet compute the saliency mask, it just sets up the necessary ops.
-            # gradient_saliency = saliency.GradientSaliency(graph, sess, y, pointclouds_pl)
-            # feed_dict = {neuron_selector: pred_class, is_training_pl: is_training}
-
-            # # # Compute the vanilla mask and the smoothed mask.
-            # vanilla_gradients_3d = gradient_saliency.GetMask(pcl, 
-            # feed_dict=feed_dict )
-            # VisualisePcdGrad(pcl, vanilla_gradients_3d)
-
-            # smoothgrad_mask_3d = gradient_saliency.GetSmoothedMask(pcl, feed_dict=feed_dict)
-            # VisualisePcdGrad(pcl, smoothgrad_mask_3d)
+                pcl = cur_batch_data[0,:]
+                base_img = plot_3d(pcl)
 
 
-            ##guided backprop
+                # # Construct the saliency object. This doesn't yet compute the saliency mask, it just sets up the necessary ops.
+                # gradient_saliency = saliency.GradientSaliency(graph, sess, y, pointclouds_pl)
+                # feed_dict = {neuron_selector: pred_class, is_training_pl: is_training}
 
-            guided_backprop = saliency.GuidedBackprop(graph, sess, y, pointclouds_pl)
-            feed_dict = {neuron_selector: pred_class, is_training_pl: is_training}
+                # # # Compute the vanilla mask and the smoothed mask.
+                # vanilla_gradients_3d = gradient_saliency.GetMask(pcl, 
+                # feed_dict=feed_dict )
+                # VisualisePcdGrad(pcl, vanilla_gradients_3d)
 
-            vanilla_gradients_3d = guided_backprop.GetMask(pcl, 
-            feed_dict=feed_dict )
-            VisualisePcdGrad(pcl, vanilla_gradients_3d)
+                # smoothgrad_mask_3d = gradient_saliency.GetSmoothedMask(pcl, feed_dict=feed_dict)
+                # VisualisePcdGrad(pcl, smoothgrad_mask_3d)
 
-            # smoothgrad_mask_3d = guided_backprop.GetSmoothedMask(pcl, feed_dict=feed_dict)
-            # VisualisePcdGrad(pcl, smoothgrad_mask_3d)
+
+                ##guided backprop
+
+                guided_backprop = saliency.GuidedBackprop(graph, sess, y, pointclouds_pl)
+                feed_dict = {neuron_selector: pred_class, is_training_pl: is_training}
+
+                vanilla_gradients_3d = guided_backprop.GetMask(pcl, 
+                feed_dict=feed_dict )
+                pc_grad_van_guided, img_van_guided = VisualisePcdGrad(pcl, vanilla_gradients_3d)
+
+                # smoothgrad_mask_3d = guided_backprop.GetSmoothedMask(pcl, feed_dict=feed_dict)
+                # pc_grad_smooth_guided, img_smooth_guided = VisualisePcdGrad(pcl, smoothgrad_mask_3d)
+
+                # fig = plt.figure()
+                # ax1 = fig.add_subplot(121)
+                # ax1.imshow(img_van_guided)
+                # ax1.set_axis_off()
+
+                # # add the screen capture
+                # ax2 = fig.add_subplot(122)
+                # ax2.imshow(base_img)
+                # ax2.set_axis_off()
+
+                # # plt.show()
+                # memfile = BytesIO()
+                # plt.savefig(memfile)
+                
+                # document.add_picture(memfile)
+                # document.save(output_filename)
+                # plt.close('all')
+                # memfile.close()
 
 
 

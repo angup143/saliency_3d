@@ -5,6 +5,7 @@ import numpy as np
 import pickle
 import os
 import sys
+import re
 import importlib
 from mayavi import mlab
 import matplotlib.pyplot as plt
@@ -74,50 +75,55 @@ def test_data_loading():
         mlab.points3d((batch_data[0,:,0]),(batch_data[0,:,1]),(batch_data[0,:,2]))
         mlab.show()
 
-def VisualisePcdGrad(pcd, grad, percentile=99, show=True, save=False, output_filename='x'): #assumes both are 1024x3
+def VisualisePcdGrad(pcd, grad, percentile=99, show=False, save=True, save_image=False, output_filename='x'): #assumes both are 1024x3
     grad_val = np.sum(np.abs(grad), axis=1)
     vmax = np.percentile(grad_val, percentile)
     vmin = np.min(grad_val)
     grad_val = np.clip((grad_val - vmin) / (vmax - vmin), 0, 1)
     grad_val = np.expand_dims(grad_val, axis=1)
-
     pc_grad = np.concatenate((pcd,grad_val),axis=1)
-
-    mlab.points3d(pc_grad[:,0],pc_grad[:,1],pc_grad[:,2],pc_grad[:,3] )
+    
     if show:
+        mlab.points3d(pc_grad[:,0],pc_grad[:,1],pc_grad[:,2],pc_grad[:,3] )
         mlab.show()
+        mlab.clf()
     if save:
+        output_npfile = re.sub(output_filename, '.npy')
+        print('saving to {}'.format(output_npfile))
+        np.save(output_npfile, pc_grad)
+        return pc_grad, None
+    if save_image:
+        mlab.points3d(pc_grad[:,0],pc_grad[:,1],pc_grad[:,2],pc_grad[:,3] )
         mlab.savefig(output_filename)
         mlab.clf()
-        # mlab.close()
-        return None, None
+        return pc_grad, None
     else:
+        mlab.points3d(pc_grad[:,0],pc_grad[:,1],pc_grad[:,2],pc_grad[:,3] )
         img = mlab.screenshot()
         mlab.clf()
-        # mlab.close()
         return pc_grad, img
-    mlab.clf()
     return None, None
 
-    
-        # print(np.shape(pc_grad))
 
-def plot_3d(points, show=False,save=True, output_filename='x'): # assumes points=x1024x3
+def plot_3d(points, show=False,save=True,save_image=False, output_filename='x'): # assumes points=x1024x3
     tracemalloc.start()
     if points.ndim==3:
         points = points[0,:]
-    # fig = mlab.figure()
     
-    mlab.points3d((points[:,0]),(points[:,1]),(points[:,2]))
     if show:
+        mlab.points3d((points[:,0]),(points[:,1]),(points[:,2]))
         mlab.show()
+        mlab.clf()
     if save:
+        output_npfile = re.sub(output_filename, '.npy')
+        print('saving to {}'.format(output_npfile))
+        np.save(output_npfile, points)
+        return None
+    if save_image:
+        mlab.points3d((points[:,0]),(points[:,1]),(points[:,2]))
         mlab.savefig(output_filename)
-
-    # img = mlab.screenshot()
-    mlab.clf()
-    # mlab.close(all=True)
-
+        mlab.clf()
+    
     return None
 
 
@@ -139,10 +145,11 @@ def main():
 
 
     ckpt_file = '/home/ananya/Documents/titan/code/pointnet2/log/model.ckpt'
-    output_folder =  '/home/ananya/Documents/titan/code/pointnet2/output/modelnet_features/'
+    output_folder =  '/home/ananya/Documents/titan/code/pointnet2/output/modelnet40_features/'
     is_training = False
     visualise = False
     save = True
+    save_image = False
     graph = tf.Graph()
     # output_filename = '/home/ananya/Desktop/pointnet_fetures.docx'
     document = Document()
@@ -200,7 +207,7 @@ def main():
 
                     pcl = cur_batch_data[0,:]
                     output_filename = '{}/point_cloud/{}_{}.png'.format(cur_output_folder, label_count, rot)
-                    base_img = plot_3d(pcl, show=visualise, save=save, output_filename=output_filename)
+                    base_img = plot_3d(pcl, show=visualise, save=save, save_image=save_image, output_filename=output_filename)
 
                     # # Construct the saliency object. This doesn't yet compute the saliency mask, it just sets up the necessary ops.
                     gradient_saliency = saliency.GradientSaliency(graph, sess, y, pointclouds_pl)
@@ -210,7 +217,7 @@ def main():
                     output_filename = '{}/vanilla_grad/{}_{}.png'.format(cur_output_folder, label_count, rot)
                     vanilla_gradients_3d = gradient_saliency.GetMask(pcl, 
                     feed_dict=feed_dict)
-                    # pc_grad_van, img_van = VisualisePcdGrad(pcl, vanilla_gradients_3d,show=visualise, save=save, output_filename=output_filename)
+                    pc_grad_van, img_van = VisualisePcdGrad(pcl, vanilla_gradients_3d,show=visualise, save=save, output_filename=output_filename, save_image=save_image)
                     # smoothgrad_mask_3d = gradient_saliency.GetSmoothedMask(pcl, feed_dict=feed_dict)
                     # VisualisePcdGrad(pcl, smoothgrad_mask_3d)
 
@@ -221,7 +228,7 @@ def main():
                     output_filename = '{}/guided_backprop/{}_{}.png'.format(cur_output_folder, label_count, rot)
                     vanilla_gradients_3d = guided_backprop.GetMask(pcl, 
                     feed_dict=feed_dict )
-                    # pc_grad_van_guided, img_van_guided = VisualisePcdGrad(pcl, vanilla_gradients_3d,show=visualise,save=save, output_filename=output_filename )
+                    pc_grad_van_guided, img_van_guided = VisualisePcdGrad(pcl, vanilla_gradients_3d,show=visualise,save=save, output_filename=output_filename, save_image=save_image )
 
                     ##integrated grad
 
@@ -229,10 +236,10 @@ def main():
                     output_filename = '{}/integrated_grad/{}_{}.png'.format(cur_output_folder, label_count, rot)
                     vanilla_gradients_3d = integrated_gradient.GetMask(pcl, 
                     feed_dict=feed_dict )
-                    pc_grad_van_guided, img_van_guided = VisualisePcdGrad(pcl, vanilla_gradients_3d,show=visualise,save=save, output_filename=output_filename )
+                    pc_grad_van_guided, img_van_guided = VisualisePcdGrad(pcl, vanilla_gradients_3d,show=visualise,save=save, output_filename=output_filename, save_image=save_image)
 
-                    smoothgrad_mask_3d = guided_backprop.GetSmoothedMask(pcl, feed_dict=feed_dict)
-                    pc_grad_smooth_guided, img_smooth_guided = VisualisePcdGrad(pcl, smoothgrad_mask_3d)
+                    # smoothgrad_mask_3d = guided_backprop.GetSmoothedMask(pcl, feed_dict=feed_dict)
+                    # pc_grad_smooth_guided, img_smooth_guided = VisualisePcdGrad(pcl, smoothgrad_mask_3d)
 
                     # fig = plt.figure()
                     # ax1 = fig.add_subplot(121)

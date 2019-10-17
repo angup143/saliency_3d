@@ -202,7 +202,7 @@ def main():
                31:{'name':'stairs','count':0},
                32:{'name':'stool','count':0},
                33:{'name':'table','count':0},
-               33:{'name':'tent','count':0},
+               34:{'name':'tent','count':0},
                35:{'name':'toilet','count':0},
                36:{'name':'tv_stand','count':0},
                37:{'name':'vase','count':0},
